@@ -147,7 +147,7 @@ def get_optional_user(request: Request, db: Session = Depends(get_db)):
 app = FastAPI(title="URL Shortener API")
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def read_root():
     return {"status": "ok", "message": "My FastAPI service is running!"}
 
