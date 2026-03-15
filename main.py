@@ -9,7 +9,7 @@ from typing import Optional, List
 import nest_asyncio
 import uvicorn
 import redis
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 import jwt
 from passlib.context import CryptContext
 
@@ -29,7 +29,7 @@ Base = declarative_base()
 try:
     redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 except Exception as e:
-    print("Не удалось подключиться к Redis. Убедитесь, что сервер Redis запущен.")
+    print("Не удалось подключиться к Redis. Убедитесь, что сервер Redis запущен.")  # pragma: no cover
 
 def get_db():
     db = SessionLocal()
@@ -66,6 +66,10 @@ class UserCreate(BaseModel):
     username: str
     password: str
 
+    @field_validator('password')
+    def truncate_password(cls, v):
+        return v[:72] if len(v) > 72 else v
+
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -95,7 +99,7 @@ class LinkStats(BaseModel):
 SECRET_KEY = "secret_token_key"
 ALGORITHM = "HS256"
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=True)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
@@ -203,10 +207,10 @@ def shorten_url(link_data: LinkCreate, user: Optional[User] = Depends(get_option
 
 @app.get("/{short_code}", tags=["Links"])
 def redirect_to_url(short_code: str, db: Session = Depends(get_db)):
-
-    cached_url = redis_client.get(short_code) if 'redis_client' in globals() else None
-    if cached_url:
-        return RedirectResponse(url=cached_url)
+    if redis_client is not None:
+        cached_url = redis_client.get(short_code)
+        if cached_url:
+            return RedirectResponse(url=cached_url)
     
 
     link = db.query(Link).filter((Link.short_code == short_code) | (Link.custom_alias == short_code)).first()
@@ -220,9 +224,8 @@ def redirect_to_url(short_code: str, db: Session = Depends(get_db)):
     link.clicks += 1
     link.last_clicked = datetime.utcnow()
     db.commit()
-    
 
-    if 'redis_client' in globals():
+    if 'redis_client' in globals() and redis_client is not None:
         redis_client.setex(short_code, 300, link.original_url)
     
     return RedirectResponse(url=link.original_url)
@@ -250,7 +253,7 @@ def update_link(short_code: str, link_data: LinkUpdate, user: User = Depends(get
     db.refresh(link)
     
 
-    if 'redis_client' in globals():
+    if 'redis_client' in globals() and redis_client is not None:
         redis_client.delete(short_code)
     
     return link
@@ -265,7 +268,7 @@ def delete_link(short_code: str, user: User = Depends(get_current_user), db: Ses
     db.commit()
     
 
-    if 'redis_client' in globals():
+    if 'redis_client' in globals() and redis_client is not None:
         redis_client.delete(short_code)
         
     return {"message": "Link deleted successfully"}
@@ -303,13 +306,29 @@ def run_server():
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
 
 
-if __name__ == "__main__": 
-    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+# REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 
-    try:
-        redis_client = redis.Redis(host=REDIS_HOST, port=6379, db=0, decode_responses=True)
-        redis_client.ping()
-        print(f"Redis connected to {REDIS_HOST}")
-    except redis.exceptions.ConnectionError:
-        redis_client = None
-        print("Error")
+# try:
+#     redis_client = redis.Redis(host=REDIS_HOST, port=6379, db=0, decode_responses=True)
+#     redis_client.ping()
+#     print(f"Redis connected to {REDIS_HOST}")
+# except redis.exceptions.ConnectionError:
+#     redis_client = None
+#     print("Error")
+
+REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
+
+try:
+    redis_client = redis.Redis(
+        host=REDIS_HOST, 
+        port=6379, 
+        db=0, 
+        decode_responses=True,
+        socket_connect_timeout=2
+    )
+    redis_client.ping()
+    print(f"Успешное подключение к Redis на хосте: {REDIS_HOST}")
+except Exception as e:
+    print(f"Не удалось подключиться к Redis на хосте {REDIS_HOST}. Ошибка: {e}")
+    redis_client = None
+
