@@ -40,6 +40,8 @@ curl -X 'POST' \
 }'
 ```
 
+Ответ: 
+
 ```json
 {
   "short_code": "fastapidocs",
@@ -57,6 +59,9 @@ curl -X 'GET' \
   -H 'accept: application/json'
 
 ```
+
+Ответ: 
+
 
 ```json
 {
