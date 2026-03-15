@@ -9,7 +9,7 @@ from typing import Optional, List
 import nest_asyncio
 import uvicorn
 import redis
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import jwt
 from passlib.context import CryptContext
 
@@ -80,8 +80,7 @@ class LinkResponse(BaseModel):
     original_url: str
     expires_at: Optional[datetime]
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class LinkUpdate(BaseModel):
     original_url: str
@@ -146,6 +145,13 @@ def get_optional_user(request: Request, db: Session = Depends(get_db)):
 
 
 app = FastAPI(title="URL Shortener API")
+
+
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "My FastAPI service is running!"}
+
+
 
 def generate_short_code(length=6):
     chars = string.ascii_letters + string.digits
