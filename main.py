@@ -1,3 +1,5 @@
+import os
+
 import string
 import random
 import threading
@@ -296,9 +298,12 @@ def run_server():
 
 
 if __name__ == "__main__": 
-    thread = threading.Thread(target=run_server)
-    thread.daemon = True
-    thread.start()
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 
-    print("Server stared. Swagger doc: http://127.0.0.1:8000/docs")
-    
+    try:
+        redis_client = redis.Redis(host=REDIS_HOST, port=6379, db=0, decode_responses=True)
+        redis_client.ping()
+        print(f"Redis connected to {REDIS_HOST}")
+    except redis.exceptions.ConnectionError:
+        redis_client = None
+        print("Error")
